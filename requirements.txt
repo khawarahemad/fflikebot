@@ -5,3 +5,4 @@ pycryptodome
 cachetools
 python-dotenv
 protobuf
+gunicorn
