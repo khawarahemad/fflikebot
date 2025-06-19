@@ -16,7 +16,7 @@ TOKEN_REFRESH_THRESHOLD = timedelta(hours=6).seconds
 
 class TokenCache:
     def __init__(self, servers_config):
-        self.cache = TTLCache(maxsize=100, ttl=CACHE_DURATION)
+        self.cache = TTLCache(maxsize=1000, ttl=CACHE_DURATION)
         self.last_refresh = {}
         self.lock = threading.Lock()
         self.session = requests.Session()
