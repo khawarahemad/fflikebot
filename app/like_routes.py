@@ -8,7 +8,7 @@ import requests
 
 from .utils.protobuf_utils import encode_uid, decode_info, create_protobuf 
 from .utils.crypto_utils import encrypt_aes
-from .token_manager import get_headers 
+from .utils.http_utils import get_headers
 
 logger = logging.getLogger(__name__)
 
@@ -66,16 +66,51 @@ async def detect_player_region(uid: str):
     return None, None
 
 async def send_likes(uid: str, region: str):
-    tokens = _token_cache.get_tokens(region) # Utilisez _token_cache
-    like_url = f"{_SERVERS[region]}/LikeProfile" # Utilisez _SERVERS
+    tokens = _token_cache.get_tokens(region)
+    like_url = f"{_SERVERS[region]}/LikeProfile"
     encrypted = encrypt_aes(create_protobuf(uid, region))
 
-    tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token) for token in tokens]
-    results = await asyncio.gather(*tasks)
+    batch_size = 100
+    total_sent = 0
+    total_success = 0
+    results = []
+    failed_tokens = []
+    for i in range(0, len(tokens), batch_size):
+        batch = tokens[i:i+batch_size]
+        tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token) for token in batch]
+        batch_results = await asyncio.gather(*tasks)
+        for idx, result in enumerate(batch_results):
+            token = batch[idx]
+            if result is not None:
+                logger.info(f"[LIKE] Token success: {token[:8]}... for UID {uid}")
+                total_success += 1
+            else:
+                logger.warning(f"[LIKE] Token failed: {token[:8]}... for UID {uid}")
+                failed_tokens.append(token)
+        total_sent += len(batch_results)
+        results.extend(batch_results)
+        if i + batch_size < len(tokens):
+            await asyncio.sleep(1)
+
+    # Retry failed tokens once after a delay
+    if failed_tokens:
+        logger.info(f"[LIKE] Retrying {len(failed_tokens)} failed tokens for UID {uid} after 2 seconds...")
+        await asyncio.sleep(2)
+        retry_tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token) for token in failed_tokens]
+        retry_results = await asyncio.gather(*retry_tasks)
+        for idx, result in enumerate(retry_results):
+            token = failed_tokens[idx]
+            if result is not None:
+                logger.info(f"[LIKE][RETRY] Token success: {token[:8]}... for UID {uid}")
+                total_success += 1
+            else:
+                logger.warning(f"[LIKE][RETRY] Token failed: {token[:8]}... for UID {uid}")
+        total_sent += len(retry_results)
+        results.extend(retry_results)
 
     return {
-        'sent': len(results),
-        'added': sum(1 for r in results if r is not None)
+        'sent': total_sent,
+        'added': total_success
     }
 
 @like_bp.route("/like", methods=["GET"])
@@ -115,9 +150,14 @@ async def like_player():
         player_name = player_info.AccountInfo.PlayerNickname
         info_url = f"{_SERVERS[region]}/GetPlayerPersonalShow" 
 
-        await send_likes(uid, region)
+        # Extra logging: how many tokens are being used
+        tokens_used = _token_cache.get_tokens(region)
+        logger.info(f"[LIKE] Using {len(tokens_used)} tokens for region {region} to send likes to UID {uid}.")
 
-        current_tokens = _token_cache.get_tokens(region) 
+        send_result = await send_likes(uid, region)
+        logger.info(f"[LIKE] send_likes result for UID {uid}: sent={send_result['sent']}, added={send_result['added']}.")
+
+        current_tokens = _token_cache.get_tokens(region)
         if not current_tokens:
             logger.error(f"No tokens available for {region} to verify likes after sending.")
             after_likes = before_likes
@@ -130,7 +170,6 @@ async def like_player():
                 if new_info and new_info.AccountInfo.PlayerNickname:
                     logger.info(f"[LIKE] Successfully fetched updated like count for UID {uid}.")
                     break  # Found a working token, exit loop
-            
             if new_info:
                 after_likes = new_info.AccountInfo.Likes
             else:
@@ -144,6 +183,9 @@ async def like_player():
             "likes_before": before_likes,
             "likes_after": after_likes,
             "server_used": region,
+            "tokens_used": len(tokens_used),
+            "likes_sent": send_result['sent'],
+            "likes_success": send_result['added'],
             "status": 1 if after_likes > before_likes else 2,
             "credit": "KHAN BHAI"
         })
@@ -239,6 +281,42 @@ async def root_home():
 @like_bp.route("/ping", methods=["GET"])
 def ping():
     return jsonify({"status": "ok", "message": "pong"})
+
+@like_bp.route("/validate-tokens", methods=["GET"])
+def validate_tokens_endpoint():
+    region = request.args.get("region")
+    uid = request.args.get("uid")
+    if not region or not uid:
+        return jsonify({"error": "region and uid are required as query parameters."}), 400
+    try:
+        info_url = f"{_SERVERS[region]}/GetPlayerPersonalShow"
+        uid_enc = encode_uid(uid)
+        tokens = _token_cache.get_tokens(region)
+        valid = 0
+        invalid = 0
+        errors = 0
+        async def check_tokens():
+            nonlocal valid, invalid, errors
+            for token in tokens:
+                try:
+                    resp = await async_post_request(info_url, bytes.fromhex(uid_enc), token)
+                    if resp:
+                        valid += 1
+                    else:
+                        invalid += 1
+                except Exception as e:
+                    errors += 1
+        asyncio.run(check_tokens())
+        return jsonify({
+            "region": region,
+            "uid": uid,
+            "total_tokens": len(tokens),
+            "valid_tokens": valid,
+            "invalid_tokens": invalid,
+            "error_tokens": errors
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def initialize_routes(app_instance, servers_config, token_cache_instance):
     global _SERVERS, _token_cache 

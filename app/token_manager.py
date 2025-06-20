@@ -9,6 +9,11 @@ from cachetools import TTLCache
 from datetime import timedelta
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+import sys
+import asyncio
+from .like_routes import _SERVERS, async_post_request
+from .utils.protobuf_utils import encode_uid
+from .utils.http_utils import get_headers
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +69,7 @@ class TokenCache:
         for attempt in range(retries):
             try:
                 params = {'uid': user['uid'], 'password': user['password']}
-                response = self.session.get(AUTH_URL, params=params, timeout=140)
+                response = self.session.get(AUTH_URL, params=params, timeout=160)
                 if response.status_code == 200:
                     token = response.json().get("token")
                     if token:
@@ -156,14 +161,34 @@ class TokenCache:
             logger.error(f"[TOKEN] Error loading credentials for {server_key}. Please check your config file format.")
             return []
 
-def get_headers(token: str):
-    return {
-        'User-Agent': "Dalvik/2.1.0 (Linux; U; Android 9; ASUS_Z01QD Build/PI)",
-        'Connection': "Keep-Alive",
-        'Accept-Encoding': "gzip",
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "X-Unity-Version": "2018.4.11f1",
-        "X-GA": "v1 1",
-        "ReleaseVersion": "OB49"
-    }
+def validate_tokens(region, uid_to_test):
+    """
+    Validate all tokens for a region by attempting to fetch player info for a known UID.
+    Usage: python -m app.token_manager REGION UID
+    """
+    logging.basicConfig(level=logging.INFO)
+    token_cache = TokenCache(servers_config=_SERVERS)
+    tokens = token_cache.get_tokens(region)
+    info_url = f"{_SERVERS[region]}/GetPlayerPersonalShow"
+    uid_enc = encode_uid(uid_to_test)
+
+    async def check_tokens():
+        valid = 0
+        for token in tokens:
+            try:
+                resp = await async_post_request(info_url, bytes.fromhex(uid_enc), token)
+                if resp:
+                    logging.info(f"[VALIDATE] Token valid: {token[:8]}...")
+                    valid += 1
+                else:
+                    logging.warning(f"[VALIDATE] Token invalid: {token[:8]}...")
+            except Exception as e:
+                logging.error(f"[VALIDATE] Token error: {token[:8]}... {e}")
+        print(f"Total valid tokens: {valid}/{len(tokens)}")
+
+    asyncio.run(check_tokens())
+
+if __name__ == "__main__" and len(sys.argv) == 3:
+    region = sys.argv[1]
+    uid = sys.argv[2]
+    validate_tokens(region, uid)

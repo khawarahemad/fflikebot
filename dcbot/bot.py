@@ -14,7 +14,7 @@ TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 APP_ID = os.getenv("DISCORD_APP_ID")
 PUBLIC_KEY = os.getenv("DISCORD_PUBLIC_KEY")
 # Support multiple guilds
-GUILD_IDS = [1144868481930645566, 1373188942639267902]  # List of allowed guild IDs
+GUILD_IDS = [1144868481930645566, 1373188942639267902, 1308112085179174994]  # List of allowed guild IDs
 
 # Enable message content intent for prefix commands to work properly
 intents = discord.Intents.default()

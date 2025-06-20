@@ -1,4 +1,4 @@
-#!/Users/khawarahemad/Documents/fflike/free-api-like-freefire/venv/bin/python3
+#!/Users/khawarahemad/Documents/fflike/fflikebot/venv/bin/python3.13
 # -*- coding: utf-8 -*-
 import re
 import sys
