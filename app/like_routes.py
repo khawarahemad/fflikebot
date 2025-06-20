@@ -236,6 +236,10 @@ async def root_home():
         "credit": "KHAN BHAI",
     })
 
+@like_bp.route("/ping", methods=["GET"])
+def ping():
+    return jsonify({"status": "ok", "message": "pong"})
+
 def initialize_routes(app_instance, servers_config, token_cache_instance):
     global _SERVERS, _token_cache 
     _SERVERS = servers_config

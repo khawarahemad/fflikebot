@@ -6,3 +6,4 @@ cachetools
 python-dotenv
 protobuf
 gunicorn
+discord.py
