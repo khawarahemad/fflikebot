@@ -125,3 +125,5 @@ GET /like?uid=1234567890
 This project was created by [Paul Alfredo](https://github.com/paulafredo).  
 Feel free to check out his GitHub profile for more projects and contributions.
 
+credit: KHAN BHAI
+

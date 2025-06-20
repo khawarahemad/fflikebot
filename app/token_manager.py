@@ -7,12 +7,16 @@ import logging
 import requests
 from cachetools import TTLCache
 from datetime import timedelta
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
 AUTH_URL = os.getenv("AUTH_URL", "https://jwtxthug.up.railway.app/token") 
 CACHE_DURATION = timedelta(hours=7).seconds
 TOKEN_REFRESH_THRESHOLD = timedelta(hours=6).seconds
+CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cache')
+Path(CACHE_DIR).mkdir(parents=True, exist_ok=True)
 
 class TokenCache:
     def __init__(self, servers_config):
@@ -21,6 +25,11 @@ class TokenCache:
         self.lock = threading.Lock()
         self.session = requests.Session()
         self.servers_config = servers_config
+        self.production = os.environ.get("PRODUCTION", "0") == "1"
+        # Initial token refresh for all servers at startup
+        for server_key in self.servers_config:
+            self._refresh_tokens(server_key)
+            self.last_refresh[server_key] = time.time()
 
     def get_tokens(self, server_key):
         with self.lock:
@@ -31,42 +40,94 @@ class TokenCache:
                     (now - self.last_refresh.get(server_key, 0)) > TOKEN_REFRESH_THRESHOLD
             )
 
-            if refresh_needed:
+            if not server_key in self.cache:
+                self._load_tokens_from_file(server_key)
+
+            # Only refresh tokens if not in production
+            if refresh_needed and not self.production:
                 self._refresh_tokens(server_key)
                 self.last_refresh[server_key] = now
+            elif self.production:
+                logger.info(f"[TOKEN] Production mode: using only cached tokens for {server_key}.")
 
             return self.cache.get(server_key, [])
+
+    def _fetch_one_token(self, user, server_key):
+        """Fetches a single token for a user and handles errors."""
+        retries = 3
+        for attempt in range(retries):
+            try:
+                params = {'uid': user['uid'], 'password': user['password']}
+                response = self.session.get(AUTH_URL, params=params, timeout=140)
+                if response.status_code == 200:
+                    token = response.json().get("token")
+                    if token:
+                        return token
+                    else:
+                        logger.warning(f"[TOKEN] Token missing in successful response for user {user['uid']} on {server_key}.")
+                        return None # Don't retry
+                else:
+                    logger.warning(f"[TOKEN] Could not get token for user {user['uid']} on {server_key}. Server responded with status {response.status_code}.")
+                    return None # Don't retry
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"[TOKEN] Network error for user {user['uid']} (Attempt {attempt + 1}/{retries}). Retrying...")
+                if attempt < retries - 1:
+                    time.sleep(2) # Wait 2 seconds before retrying
+                else:
+                    logger.error(f"[TOKEN] Final network error for user {user['uid']} after {retries} attempts. This user will be skipped.")
+            except Exception as e:
+                # Catch other unexpected errors
+                logger.error(f"[TOKEN] Unexpected error for user {user['uid']} on {server_key}: {e}")
+                return None # Don't retry for other errors
+        return None
 
     def _refresh_tokens(self, server_key):
         try:
             creds = self._load_credentials(server_key)
-            tokens = []
+            if not creds:
+                logger.info(f"[TOKEN] No credentials for {server_key}, skipping refresh.")
+                return
 
-            for user in creds:
-                try:
-                    params = {'uid': user['uid'], 'password': user['password']}
-                    response = self.session.get(AUTH_URL, params=params, timeout=5)
-                    if response.status_code == 200:
-                        token = response.json().get("token")
-                        if token:
-                            tokens.append(token)
-                    else:
-                        logger.warning(f"Failed to fetch token for {user['uid']} (server {server_key}): Status {response.status_code}, Response: {response.text}")
-                except Exception as e:
-                    logger.error(f"Error fetching token for {user['uid']} (server {server_key}): {str(e)}")
-                    continue
+            logger.info(f"[TOKEN] Starting parallel token refresh for {len(creds)} accounts on {server_key} server...")
+            
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                # Use map to fetch tokens in parallel and filter out None values from failed requests
+                tokens = list(filter(None, executor.map(lambda user: self._fetch_one_token(user, server_key), creds)))
 
             if tokens:
                 self.cache[server_key] = tokens
-                logger.info(f"Refreshed tokens for {server_key}. Count: {len(tokens)}")
+                self._save_tokens_to_file(server_key, tokens)
+                logger.info(f"[TOKEN] Successfully refreshed {len(tokens)} out of {len(creds)} tokens for {server_key} server.")
             else:
-                logger.warning(f"No valid tokens retrieved for {server_key}. Clearing cache for this server.")
+                logger.warning(f"[TOKEN] No valid tokens found for {server_key} after refresh. Please check your credentials or network connection.")
                 self.cache[server_key] = []
+                self._save_tokens_to_file(server_key, [])
 
         except Exception as e:
-            logger.error(f"Critical error during token refresh for {server_key}: {str(e)}")
+            logger.error(f"[TOKEN] Critical error during token refresh for {server_key}: {e}")
             if server_key not in self.cache:
                 self.cache[server_key] = []
+                self._save_tokens_to_file(server_key, [])
+
+    def _save_tokens_to_file(self, server_key, tokens):
+        try:
+            file_path = os.path.join(CACHE_DIR, f"tokens_{server_key}.json")
+            with open(file_path, 'w') as f:
+                json.dump(tokens, f)
+        except Exception as e:
+            logger.error(f"[TOKEN] Failed to save tokens to file for {server_key}.")
+
+    def _load_tokens_from_file(self, server_key):
+        try:
+            file_path = os.path.join(CACHE_DIR, f"tokens_{server_key}.json")
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as f:
+                    tokens = json.load(f)
+                    if tokens:
+                        self.cache[server_key] = tokens
+                        logger.info(f"[TOKEN] Loaded {len(tokens)} tokens for {server_key} from cache file.")
+        except Exception as e:
+            logger.error(f"[TOKEN] Failed to load tokens from file for {server_key}.")
 
     def _load_credentials(self, server_key):
         try:
@@ -80,10 +141,10 @@ class TokenCache:
                 with open(config_path, 'r') as f:
                     return json.load(f)
             else:
-                logger.warning(f"Config file not found for {server_key}: {config_path}. No credentials loaded.")
+                logger.warning(f"[TOKEN] No config file found for {server_key} server. Please add your guest account credentials to {config_path}.")
                 return []
         except Exception as e:
-            logger.error(f"Error loading credentials for {server_key}: {str(e)}")
+            logger.error(f"[TOKEN] Error loading credentials for {server_key}. Please check your config file format.")
             return []
 
 def get_headers(token: str):

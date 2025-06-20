@@ -1,4 +1,7 @@
 from app import app as application
+from dotenv import load_dotenv
+
+load_dotenv()
 
 if __name__ == '__main__':
     import os
