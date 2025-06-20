@@ -1,5 +1,27 @@
-.idea/
-.venv/
+# Python
 __pycache__/
-.vercel
+*.py[cod]
+*.pyo
+*.pyd
+
+# Environment
 .env
+.env.*          # in case you use .env.development, .env.local, etc.
+.venv/
+*.env           # catch any .env files missed
+
+# IDEs
+.idea/
+.vscode/
+
+# OS / Misc
+.DS_Store        # macOS system file
+Thumbs.db        # Windows
+*.log            # Log files
+*.sqlite3        # SQLite databases if you're using them
+
+# Deployment/Build
+.vercel/
+dist/
+build/
+*.egg-info/
