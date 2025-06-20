@@ -207,6 +207,19 @@ async def checkban_command(ctx, uid: str):
     
     await ctx.send(embed=embed)
 
+# ========== PING COMMAND ==========
+@bot.command(name="ping")
+async def ping_command(ctx):
+    """Responds with Pong! and latency for monitoring bot health."""
+    latency = round(bot.latency * 1000)  # ms
+    await ctx.send(f"🏓 Pong! Latency: {latency}ms")
+
+@bot.tree.command(name="ping", description="Check if the bot is alive (slash command)")
+async def ping_slash_command(interaction: discord.Interaction):
+    """Slash command for /ping."""
+    latency = round(bot.latency * 1000)  # ms
+    await interaction.response.send_message(f"🏓 Pong! Latency: {latency}ms", ephemeral=True)
+
 if __name__ == "__main__":
     if not TOKEN:
         print("DISCORD_BOT_TOKEN is not set in the environment!")
