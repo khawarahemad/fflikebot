@@ -26,31 +26,37 @@ class TokenCache:
         self.session = requests.Session()
         self.servers_config = servers_config
         self.production = os.environ.get("PRODUCTION", "0") == "1"
-        # Initial token refresh for all servers at startup
+        # On startup, always try to load tokens from file first
         for server_key in self.servers_config:
-            self._refresh_tokens(server_key)
+            loaded = self._load_tokens_from_file(server_key)
+            if not loaded:
+                self._refresh_tokens(server_key)
             self.last_refresh[server_key] = time.time()
+            logger.info(f"[TOKEN] Startup: {len(self.cache.get(server_key, []))} tokens loaded for {server_key}.")
 
     def get_tokens(self, server_key):
         with self.lock:
-            now = time.time()
-            refresh_needed = (
-                    server_key not in self.cache or
-                    server_key not in self.last_refresh or
-                    (now - self.last_refresh.get(server_key, 0)) > TOKEN_REFRESH_THRESHOLD
-            )
-
-            if not server_key in self.cache:
-                self._load_tokens_from_file(server_key)
-
-            # Only refresh tokens if not in production
-            if refresh_needed and not self.production:
+            # If tokens are in memory, use them directly
+            tokens = self.cache.get(server_key)
+            if tokens:
+                logger.debug(f"[TOKEN] Returning {len(tokens)} in-memory tokens for {server_key}.")
+                return tokens
+            # If not in memory, try loading from file
+            loaded = self._load_tokens_from_file(server_key)
+            tokens = self.cache.get(server_key)
+            if tokens:
+                logger.info(f"[TOKEN] Loaded {len(tokens)} tokens for {server_key} from file on demand.")
+                return tokens
+            # If still not present, only refresh if not in production
+            if not self.production:
+                logger.info(f"[TOKEN] No tokens in memory or file for {server_key}, refreshing...")
                 self._refresh_tokens(server_key)
-                self.last_refresh[server_key] = now
-            elif self.production:
-                logger.info(f"[TOKEN] Production mode: using only cached tokens for {server_key}.")
-
-            return self.cache.get(server_key, [])
+                tokens = self.cache.get(server_key, [])
+                logger.info(f"[TOKEN] After refresh: {len(tokens)} tokens for {server_key}.")
+                return tokens
+            else:
+                logger.warning(f"[TOKEN] No tokens available for {server_key} in production mode!")
+                return []
 
     def _fetch_one_token(self, user, server_key):
         """Fetches a single token for a user and handles errors."""
@@ -126,8 +132,11 @@ class TokenCache:
                     if tokens:
                         self.cache[server_key] = tokens
                         logger.info(f"[TOKEN] Loaded {len(tokens)} tokens for {server_key} from cache file.")
+                        return True
+            return False
         except Exception as e:
             logger.error(f"[TOKEN] Failed to load tokens from file for {server_key}.")
+            return False
 
     def _load_credentials(self, server_key):
         try:
