@@ -90,7 +90,7 @@ async def send_likes(uid: str, region: str):
         total_sent += len(batch_results)
         results.extend(batch_results)
         if i + batch_size < len(tokens):
-            await asyncio.sleep(1)
+            await asyncio.sleep(3)
 
     # Retry failed tokens once after a delay
     if failed_tokens:
