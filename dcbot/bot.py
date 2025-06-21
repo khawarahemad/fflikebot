@@ -219,7 +219,16 @@ async def checkban_command(ctx, uid: str):
     
     embed.add_field(name="Status", value=ban_status, inline=False)
     embed.add_field(name="Ban Duration", value=ban_details, inline=True)
-    embed.set_footer(text=f"Credit: {data.get('credit', 'Unknown')}")
+    
+    # Set GIF image based on ban status
+    if player_data.get("is_banned") == 1:
+        gif_url = "https://raw.githubusercontent.com/khawarahemad/assets/main/banned.gif"
+    else:
+        gif_url = "https://raw.githubusercontent.com/khawarahemad/assets/main/clean.gif"
+    
+    embed.set_image(url=gif_url)
+
+    embed.set_footer(text=f"Credit: KHAN BHAI")
     
     await ctx.send(embed=embed)
 
