@@ -150,11 +150,23 @@ async def info_command(ctx, uid: str):
     clan = data.get("clanBasicInfo", {})
     social = data.get("socialInfo", {})
     pet = data.get("petInfo", {})
+    profile_info = data.get("profileInfo", {})
     
     embed = discord.Embed(
         title=f"Player Info: {basic.get('nickname', 'Unknown')}",
         color=discord.Color.gold()
     )
+    
+    # Fetch avatar image if avatarId is available
+    if profile_info and profile_info.get("avatarId"):
+        avatar_id = profile_info.get("avatarId")
+        try:
+            genitems_url = f"https://genitems.vercel.app/items?id={avatar_id}"
+            avatar_data = await fetch_json(genitems_url)
+            if avatar_data and "items_url" in avatar_data:
+                embed.set_thumbnail(url=avatar_data["items_url"])
+        except Exception as e:
+            print(f"Failed to fetch avatar for ID {avatar_id}: {e}")
     
     embed.add_field(name="Level", value=basic.get("level", "Unknown"), inline=True)
     embed.add_field(name="Region", value=basic.get("region", "Unknown"), inline=True)
@@ -172,7 +184,11 @@ async def info_command(ctx, uid: str):
     if social.get("signature"):
         embed.add_field(name="Bio", value=social["signature"][:100] + (social["signature"][100:] and '...'), inline=False)
     
-    embed.set_footer(text=f"UID: {uid} | Last login: {format_timestamp(basic.get('lastLoginAt'))}")
+    embed.set_footer(text=f"UID: {uid} | Last login: {format_timestamp(basic.get('lastLoginAt'))} | Credit: KHAN BHAI")
+    
+    # Set the playerinfo.gif as the embed image
+    embed.set_image(url="https://raw.githubusercontent.com/khawarahemad/assets/main/playerinfo.gif")
+    
     await ctx.send(embed=embed)
 
 # ========== BAN CHECK COMMAND ==========
