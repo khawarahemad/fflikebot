@@ -40,7 +40,7 @@ bot = MyBot(command_prefix="!", intents=intents)
 
 API_BASE = "https://fflikebot-production.up.railway.app"  # Change to your deployed API if needed
 INFO_API = "https://api-info-gb.up.railway.app/info?uid={user_id}"
-BAN_API = "https://api-check-ban.up.railway.app/check_ban/{user_id}"
+BAN_API = "https://api-check-ban.vercel.app/check_ban/{user_id}"
 
 @bot.event
 async def on_ready():
