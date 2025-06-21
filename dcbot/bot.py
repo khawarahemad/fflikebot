@@ -73,32 +73,44 @@ def format_timestamp(timestamp_str):
 async def like_command(ctx, uid: str):
     url = f"{API_BASE}/like?uid={uid}"
     data = await fetch_json(url)
-    
+
     if "error" in data:
-        return await ctx.send(f"❌ Error: {data['error']}")
-    
+        error_embed = discord.Embed(
+            title="❌ Error",
+            description=(
+                f"Please ask @hey_khawar01 to refresh tokens.\n"
+                f"**Details:** `{data['error']}`"
+            ),
+            color=discord.Color.red()
+        )
+        error_embed.set_footer(text="Automated Like System")
+        return await ctx.send(embed=error_embed)
+
     is_success = data.get("status") == 1
     embed = discord.Embed(
-        title="Like Added Successfully!" if is_success else "Like Failed",
+        title="✅ Like Added Successfully!" if is_success else "❌ Like Failed",
         color=discord.Color.green() if is_success else discord.Color.red()
     )
-    
-    embed.add_field(name="Player", value=data.get("player", "Unknown"), inline=True)
-    embed.add_field(name="UID", value=data.get("uid", "Unknown"), inline=True)
-    embed.add_field(name="Server", value=data.get("server_used", "Unknown"), inline=True)
-    embed.add_field(name="Likes Added", value=data.get("likes_added", "Unknown"), inline=True)
-    embed.add_field(name="Before", value=data.get("likes_before", "Unknown"), inline=True)
-    embed.add_field(name="After", value=data.get("likes_after", "Unknown"), inline=True)
-    embed.set_footer(text=f"Credit: {data.get('credit', 'Unknown')}")
-    
+
+    embed.add_field(name="👤 Player", value=data.get("player", "Unknown"), inline=True)
+    embed.add_field(name="🆔 UID", value=data.get("uid", "Unknown"), inline=True)
+    embed.add_field(name="🌐 Server", value=data.get("server_used", "Unknown"), inline=True)
+    embed.add_field(name="👍 Likes Added", value=data.get("likes_added", "Unknown"), inline=True)
+    embed.add_field(name="🔢 Before", value=data.get("likes_before", "Unknown"), inline=True)
+    embed.add_field(name="🔢 After", value=data.get("likes_after", "Unknown"), inline=True)
+
+    embed.set_footer(text=f"Credit Used: {data.get('credit', 'Unknown')}")
+
     # Set GIF image based on result
-    if is_success:
-        gif_url = "https://raw.githubusercontent.com/khawarahemad/assets/main/success.gif"  # Example public success gif
-    else:
-        gif_url = "https://raw.githubusercontent.com/khawarahemad/assets/main/failure.gif"  # Example public failure gif
-    
+    gif_url = (
+        "https://raw.githubusercontent.com/khawarahemad/assets/main/success.gif"
+        if is_success
+        else "https://raw.githubusercontent.com/khawarahemad/assets/main/failure.gif"
+    )
     embed.set_image(url=gif_url)
+
     await ctx.send(embed=embed)
+
 
 # ========== VERIFY COMMAND ==========
 @bot.command(name="verify")
