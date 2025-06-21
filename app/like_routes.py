@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import logging
 import aiohttp 
 import requests 
+import time
 
 
 from .utils.protobuf_utils import encode_uid, decode_info, create_protobuf 
@@ -317,6 +318,36 @@ def validate_tokens_endpoint():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@like_bp.route("/reload-tokens", methods=["GET"])
+def reload_tokens_endpoint():
+    try:
+        # Clear all tokens from memory
+        _token_cache.cache.clear()
+        _token_cache.last_refresh.clear()
+        
+        # Force refresh tokens from config for all regions
+        for region in _SERVERS:
+            _token_cache._refresh_tokens(region)
+            _token_cache.last_refresh[region] = time.time()
+        
+        # Get token counts for response
+        token_counts = {}
+        for region in _SERVERS:
+            tokens = _token_cache.get_tokens(region)
+            token_counts[region] = len(tokens)
+        
+        return jsonify({
+            "message": "Tokens refreshed from config successfully",
+            "token_counts": token_counts,
+            "credit": "KHAN BHAI"
+        })
+    except Exception as e:
+        return jsonify({
+            "error": "Failed to reload tokens",
+            "message": str(e),
+            "credit": "KHAN BHAI"
+        }), 500
 
 def initialize_routes(app_instance, servers_config, token_cache_instance):
     global _SERVERS, _token_cache 

@@ -39,7 +39,7 @@ class MyBot(commands.Bot):
 bot = MyBot(command_prefix="!", intents=intents)
 
 API_BASE = "https://fflikebot-production.up.railway.app"  # Change to your deployed API if needed
-INFO_API = "https://api-info-nxx.onrender.com/info?id={user_id}"
+INFO_API = "https://api-info-gb.up.railway.app/info?uid={user_id}"
 BAN_API = "https://api-check-ban.up.railway.app/check_ban/{user_id}"
 
 @bot.event
