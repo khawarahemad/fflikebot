@@ -6,7 +6,7 @@ import time
 import logging
 import requests
 from cachetools import TTLCache
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 import sys
@@ -38,6 +38,30 @@ class TokenCache:
                 self._refresh_tokens(server_key)
             self.last_refresh[server_key] = time.time()
             logger.info(f"[TOKEN] Startup: {len(self.cache.get(server_key, []))} tokens loaded for {server_key}.")
+
+        # Send startup notification to Discord Webhook
+        webhook_url = os.getenv("DISCORD_LOG_WEBHOOK")
+        if webhook_url:
+            try:
+                token_counts = {
+                    region: len(self.cache.get(region, []))
+                    for region in self.servers_config
+                }
+                embed = {
+                    "title": "🚀 API Online & Tokens Loaded",
+                    "description": "The fflikebot API has successfully started and all initial tokens are loaded into memory.",
+                    "color": 0x3498DB,  # Blue
+                    "fields": [
+                        {"name": f"🌐 {region}", "value": f"**{count}** tokens loaded", "inline": True}
+                        for region, count in token_counts.items()
+                    ],
+                    "footer": {"text": "API Started at"},
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                requests.post(webhook_url, json={"embeds": [embed]}, timeout=10)
+                logger.info("[WEBHOOK] Successfully sent API startup report to Discord.")
+            except Exception as e:
+                logger.error(f"[WEBHOOK] Failed to send startup notification: {e}")
 
     def get_tokens(self, server_key):
         with self.lock:

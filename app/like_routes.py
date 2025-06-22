@@ -5,6 +5,7 @@ import logging
 import aiohttp 
 import requests 
 import time
+import os
 
 
 from .utils.protobuf_utils import encode_uid, decode_info, create_protobuf 
@@ -337,12 +338,48 @@ def reload_tokens_endpoint():
             tokens = _token_cache.get_tokens(region)
             token_counts[region] = len(tokens)
         
+        # Send notification to Discord Webhook on success
+        webhook_url = os.getenv("DISCORD_LOG_WEBHOOK")
+        if webhook_url:
+            try:
+                embed = {
+                    "title": "✅ Token Refresh Successful",
+                    "description": "All tokens have been forcefully reloaded from the configuration files.",
+                    "color": 0x2ECC71,  # Green
+                    "fields": [
+                        {"name": f"🌐 {region}", "value": f"**{count}** tokens loaded", "inline": True}
+                        for region, count in token_counts.items()
+                    ],
+                    "footer": {"text": "Report generated at"},
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                requests.post(webhook_url, json={"embeds": [embed]}, timeout=10)
+                logger.info("[WEBHOOK] Successfully sent token reload report to Discord.")
+            except Exception as e:
+                logger.error(f"[WEBHOOK] Failed to send success notification: {e}")
+
         return jsonify({
             "message": "Tokens refreshed from config successfully",
             "token_counts": token_counts,
             "credit": "KHAN BHAI"
         })
     except Exception as e:
+        logger.error(f"Failed to reload tokens: {e}", exc_info=True)
+        # Send failure notification to Discord Webhook
+        webhook_url = os.getenv("DISCORD_LOG_WEBHOOK")
+        if webhook_url:
+            try:
+                embed = {
+                    "title": "❌ Token Refresh Failed",
+                    "description": f"An error occurred during token refresh: ```{str(e)}```",
+                    "color": 0xE74C3C,  # Red
+                    "footer": {"text": "Error report generated at"},
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                requests.post(webhook_url, json={"embeds": [embed]}, timeout=10)
+            except Exception as hook_e:
+                logger.error(f"[WEBHOOK] Also failed to send error report to Discord: {hook_e}")
+
         return jsonify({
             "error": "Failed to reload tokens",
             "message": str(e),

@@ -1,4 +1,6 @@
 # app/__init__.py
+from dotenv import load_dotenv
+load_dotenv()
 
 from flask import Flask, request
 import os
@@ -12,7 +14,6 @@ from .like_routes import like_bp, initialize_routes
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 SERVERS = {
     "EUROPE": os.getenv("EUROPE_SERVER", "https://clientbp.ggblueshark.com"),
