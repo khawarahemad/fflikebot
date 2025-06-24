@@ -20,6 +20,13 @@ like_bp = Blueprint('like_bp', __name__)
 _SERVERS = {}
 _token_cache = None
 
+# Add this at the top or near other config
+AUTO_LIKE_UIDS = [
+    "1689677011",
+    "804459982",
+    "1654843293",
+    # ...
+]
 
 async def async_post_request(url: str, data: bytes, token: str):
     try:
@@ -355,8 +362,20 @@ def reload_tokens_endpoint():
                 }
                 requests.post(webhook_url, json={"embeds": [embed]}, timeout=10)
                 logger.info("[WEBHOOK] Successfully sent token reload report to Discord.")
+                # Trigger auto-like after reload
+                autolike_embed = {
+                    "title": "🤖 Auto-like Triggered!",
+                    "description": f"Auto-like has been triggered for {len(AUTO_LIKE_UIDS)} UIDs after token reload.",
+                    "color": 0x3498DB,
+                    "footer": {"text": "Auto-like started at"},
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                requests.post(webhook_url, json={"embeds": [autolike_embed]}, timeout=10)
+                # Run auto-like worker in background
+                import threading
+                threading.Thread(target=lambda: asyncio.run(_autolike_worker(AUTO_LIKE_UIDS))).start()
             except Exception as e:
-                logger.error(f"[WEBHOOK] Failed to send success notification: {e}")
+                logger.error(f"[WEBHOOK] Failed to send success notification or trigger autolike: {e}")
 
         return jsonify({
             "message": "Tokens refreshed from config successfully",

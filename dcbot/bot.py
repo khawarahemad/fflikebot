@@ -318,6 +318,15 @@ async def sync_commands(ctx):
 @commands.is_owner()
 async def autolike_slash_command(interaction: discord.Interaction):
     """Triggers the /autolike endpoint with the hardcoded UID list."""
+    allowed_channel_id = 1386301075086118982
+    if interaction.channel_id != allowed_channel_id:
+        error_embed = discord.Embed(
+            title="❌ Access Denied",
+            description="This command can only be used in the designated channel.",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=error_embed, ephemeral=True)
+        return
     # Respond immediately with an embed
     embed = discord.Embed(
         title="🚀 Auto-like Started",
