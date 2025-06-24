@@ -5,6 +5,7 @@ from discord.ext import commands
 import aiohttp
 from discord import app_commands
 import datetime
+import asyncio
 
 # Load .env file
 load_dotenv()
@@ -256,6 +257,47 @@ async def ping_slash_command(interaction: discord.Interaction):
     """Slash command for /ping."""
     latency = round(bot.latency * 1000)  # ms
     await interaction.response.send_message(f"🏓 Pong! Latency: {latency}ms", ephemeral=True)
+
+# ========== RELOAD TOKENS COMMAND ==========
+@bot.tree.command(name="reload", description="Force a refresh of all API tokens from the config files.")
+async def reload_tokens_slash_command(interaction: discord.Interaction):
+    """Fires a request to the /reload-tokens endpoint after checking permissions."""
+    allowed_channel_id = 1386301075086118982
+
+    # Check if the command is used in the allowed channel
+    if interaction.channel_id != allowed_channel_id:
+        error_embed = discord.Embed(
+            title="❌ Access Denied",
+            description="This command can only be used in the designated channel.\nPlease ask `@hey_khawar01` or `@ariyan_kiwi` to refresh the tokens.",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=error_embed, ephemeral=True)
+        return
+
+    # Respond to the user immediately with an embed
+    success_embed = discord.Embed(
+        title="🤙 Token Refresh Incoming...",
+        description="Aight, wait. Kicking off a token refresh. It's gonna take a hot sec, maybe like 20 mins, so just chill.",
+        color=discord.Color.blue()
+    )
+    await interaction.response.send_message(embed=success_embed, ephemeral=True)
+
+    # Fire and forget the request to the reload endpoint
+    reload_url = f"{API_BASE}/reload-tokens"
+    try:
+        # Create a task to run the request in the background
+        async def send_reload_request():
+            async with aiohttp.ClientSession() as session:
+                async with session.get(reload_url, timeout=300) as resp:
+                    if resp.status == 200:
+                        print(f"[RELOAD COMMAND] Successfully triggered token reload. Status: {resp.status}")
+                    else:
+                        print(f"[RELOAD COMMAND] Error triggering token reload. Status: {resp.status}")
+        
+        asyncio.create_task(send_reload_request())
+        
+    except Exception as e:
+        print(f"[RELOAD COMMAND] Failed to send reload request: {e}")
 
 if __name__ == "__main__":
     if not TOKEN:
