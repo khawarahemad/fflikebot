@@ -299,6 +299,12 @@ async def reload_tokens_slash_command(interaction: discord.Interaction):
     except Exception as e:
         print(f"[RELOAD COMMAND] Failed to send reload request: {e}")
 
+@bot.command(name="sync")
+@commands.is_owner()
+async def sync_commands(ctx):
+    fmt = await bot.tree.sync()
+    await ctx.send(f"Synced {len(fmt)} commands globally.")
+
 if __name__ == "__main__":
     if not TOKEN:
         print("DISCORD_BOT_TOKEN is not set in the environment!")
