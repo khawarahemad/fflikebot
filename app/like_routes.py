@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 import asyncio
 from datetime import datetime, timezone
 import logging
@@ -11,7 +11,6 @@ import os
 from .utils.protobuf_utils import encode_uid, decode_info, create_protobuf 
 from .utils.crypto_utils import encrypt_aes
 from .utils.http_utils import get_headers
-from . import app
 
 logger = logging.getLogger(__name__)
 
@@ -439,7 +438,7 @@ async def _autolike_worker(uid_list):
     for uid in uid_list:
         # Simulate a GET request to /like for each UID
         try:
-            with app.test_request_context(f"/like?uid={uid}"):
+            with current_app.test_request_context(f"/like?uid={uid}"):
                 resp = await like_player()
                 if isinstance(resp, tuple):
                     data = resp[0].json
