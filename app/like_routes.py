@@ -444,12 +444,32 @@ async def _autolike_worker(uid_list):
                     data = resp[0].json
                 else:
                     data = resp.json
-                if data.get("likes_added", 0) > 0:
-                    success.append(data)
+                # Ensure all fields are present for webhook reporting
+                result = {
+                    "uid": data.get("uid", uid),
+                    "player": data.get("player", "?"),
+                    "likes_added": data.get("likes_added", 0),
+                    "likes_before": data.get("likes_before", 0),
+                    "likes_after": data.get("likes_after", 0),
+                    "server_used": data.get("server_used", "?"),
+                    "status": data.get("status", 0),
+                    "error": data.get("error")
+                }
+                if result["likes_added"] > 0:
+                    success.append(result)
                 else:
-                    failed.append(data)
+                    failed.append(result)
         except Exception as e:
-            failed.append({"uid": uid, "error": str(e)})
+            failed.append({
+                "uid": uid,
+                "player": "?",
+                "likes_added": 0,
+                "likes_before": 0,
+                "likes_after": 0,
+                "server_used": "?",
+                "status": 0,
+                "error": str(e)
+            })
         await asyncio.sleep(3)
     # Prepare webhook message
     if webhook_url:
@@ -458,11 +478,11 @@ async def _autolike_worker(uid_list):
             if success:
                 desc += "✅ **Success:**\n"
                 for d in success:
-                    desc += f"- UID: `{d.get('uid')}` | Player: `{d.get('player','?')}` | Likes Added: `{d.get('likes_added',0)}` (Before: {d.get('likes_before','?')}, After: {d.get('likes_after','?')})\n"
+                    desc += f"- UID: `{d['uid']}` | Player: `{d['player']}` | Likes Added: `{d['likes_added']}` (Before: {d['likes_before']}, After: {d['likes_after']})\n"
             if failed:
                 desc += "\n❌ **No Likes Added:**\n"
                 for d in failed:
-                    desc += f"- UID: `{d.get('uid','?')}` | Player: `{d.get('player','?')}` | Likes Added: `{d.get('likes_added',0)}` (Before: {d.get('likes_before','?')}, After: {d.get('likes_after','?')})\n"
+                    desc += f"- UID: `{d['uid']}` | Player: `{d['player']}` | Likes Added: `{d['likes_added']}` (Before: {d['likes_before']}, After: {d['likes_after']})\n"
             embed = {
                 "title": "🤖 Auto-like Complete!",
                 "description": desc or "No results.",
