@@ -43,6 +43,15 @@ API_BASE = "https://fflikebot-production.up.railway.app"  # Change to your deplo
 INFO_API = "https://api-info-gb.up.railway.app/info?uid={user_id}"
 BAN_API = "https://api-check-ban.vercel.app/check_ban/{user_id}"
 
+# Hardcoded list of UIDs for auto-like
+AUTO_LIKE_UIDS = [
+    # Add your UIDs here as strings
+    "1689677011",
+    "804459982",
+    "1654843293",
+    # ...
+]
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
@@ -304,6 +313,30 @@ async def reload_tokens_slash_command(interaction: discord.Interaction):
 async def sync_commands(ctx):
     fmt = await bot.tree.sync()
     await ctx.send(f"Synced {len(fmt)} commands globally.")
+
+@bot.tree.command(name="autolike", description="Auto-like all UIDs in the hardcoded list.")
+@commands.is_owner()
+async def autolike_slash_command(interaction: discord.Interaction):
+    """Triggers the /autolike endpoint with the hardcoded UID list."""
+    # Respond immediately with an embed
+    embed = discord.Embed(
+        title="🚀 Auto-like Started",
+        description=f"Auto-like process started for {len(AUTO_LIKE_UIDS)} UIDs. You'll get a summary in Discord when it's done!",
+        color=discord.Color.blue()
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # Fire and forget the request to the API
+    autolike_url = f"{API_BASE}/autolike"
+    try:
+        async def send_autolike_request():
+            async with aiohttp.ClientSession() as session:
+                payload = {"uids": AUTO_LIKE_UIDS}
+                async with session.post(autolike_url, json=payload, timeout=600) as resp:
+                    print(f"[AUTOLIKE COMMAND] Triggered autolike. Status: {resp.status}")
+        asyncio.create_task(send_autolike_request())
+    except Exception as e:
+        print(f"[AUTOLIKE COMMAND] Failed to send autolike request: {e}")
 
 if __name__ == "__main__":
     if not TOKEN:

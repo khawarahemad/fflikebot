@@ -386,6 +386,76 @@ def reload_tokens_endpoint():
             "credit": "KHAN BHAI"
         }), 500
 
+@like_bp.route("/autolike", methods=["POST"])
+def autolike_endpoint():
+    try:
+        # Accept UIDs as JSON array or comma-separated string
+        data = request.get_json(force=True, silent=True) or {}
+        uids = data.get("uids")
+        if not uids:
+            uids = request.args.get("uids")
+        if not uids:
+            return jsonify({"error": "No UIDs provided. Send as JSON array in 'uids' or as comma-separated string in 'uids' param."}), 400
+        if isinstance(uids, str):
+            uid_list = [u.strip() for u in uids.split(",") if u.strip()]
+        else:
+            uid_list = [str(u).strip() for u in uids if str(u).strip()]
+        if not uid_list:
+            return jsonify({"error": "No valid UIDs found."}), 400
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        results = loop.run_until_complete(_autolike_worker(uid_list))
+        loop.close()
+
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+async def _autolike_worker(uid_list):
+    webhook_url = os.getenv("DISCORD_LOG_WEBHOOK")
+    success = []
+    failed = []
+    for uid in uid_list:
+        # Simulate a GET request to /like for each UID
+        try:
+            with app.test_request_context(f"/like?uid={uid}"):
+                resp = await like_player()
+                if isinstance(resp, tuple):
+                    data = resp[0].json
+                else:
+                    data = resp.json
+                if data.get("likes_added", 0) > 0:
+                    success.append(data)
+                else:
+                    failed.append(data)
+        except Exception as e:
+            failed.append({"uid": uid, "error": str(e)})
+        await asyncio.sleep(3)
+    # Prepare webhook message
+    if webhook_url:
+        try:
+            desc = ""
+            if success:
+                desc += "✅ **Success:**\n"
+                for d in success:
+                    desc += f"- UID: `{d.get('uid')}` | Player: `{d.get('player','?')}` | Likes Added: `{d.get('likes_added',0)}` (Before: {d.get('likes_before','?')}, After: {d.get('likes_after','?')})\n"
+            if failed:
+                desc += "\n❌ **No Likes Added:**\n"
+                for d in failed:
+                    desc += f"- UID: `{d.get('uid','?')}` | Player: `{d.get('player','?')}` | Likes Added: `{d.get('likes_added',0)}` (Before: {d.get('likes_before','?')}, After: {d.get('likes_after','?')})\n"
+            embed = {
+                "title": "🤖 Auto-like Complete!",
+                "description": desc or "No results.",
+                "color": 0x3498DB,
+                "footer": {"text": "Auto-like finished at"},
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            requests.post(webhook_url, json={"embeds": [embed]}, timeout=10)
+        except Exception as e:
+            logger.error(f"[WEBHOOK] Failed to send autolike summary: {e}")
+    return {"success": success, "failed": failed}
+
 def initialize_routes(app_instance, servers_config, token_cache_instance):
     global _SERVERS, _token_cache 
     _SERVERS = servers_config
