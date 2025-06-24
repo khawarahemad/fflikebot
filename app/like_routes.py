@@ -11,6 +11,7 @@ import os
 from .utils.protobuf_utils import encode_uid, decode_info, create_protobuf 
 from .utils.crypto_utils import encrypt_aes
 from .utils.http_utils import get_headers
+from . import app
 
 logger = logging.getLogger(__name__)
 
@@ -458,9 +459,20 @@ async def _autolike_worker(uid_list):
                 if result["likes_added"] > 0:
                     success.append(result)
                 else:
+                    # Try to fetch player info for failed likes to fill in player/likes fields
+                    try:
+                        region, player_info = await detect_player_region(uid)
+                        if player_info:
+                            result["player"] = getattr(player_info.AccountInfo, "PlayerNickname", "?")
+                            result["likes_before"] = getattr(player_info.AccountInfo, "Likes", 0)
+                            result["likes_after"] = getattr(player_info.AccountInfo, "Likes", 0)
+                            result["server_used"] = region or "?"
+                    except Exception:
+                        pass
                     failed.append(result)
         except Exception as e:
-            failed.append({
+            # Try to fetch player info for failed likes to fill in player/likes fields
+            result = {
                 "uid": uid,
                 "player": "?",
                 "likes_added": 0,
@@ -469,7 +481,17 @@ async def _autolike_worker(uid_list):
                 "server_used": "?",
                 "status": 0,
                 "error": str(e)
-            })
+            }
+            try:
+                region, player_info = await detect_player_region(uid)
+                if player_info:
+                    result["player"] = getattr(player_info.AccountInfo, "PlayerNickname", "?")
+                    result["likes_before"] = getattr(player_info.AccountInfo, "Likes", 0)
+                    result["likes_after"] = getattr(player_info.AccountInfo, "Likes", 0)
+                    result["server_used"] = region or "?"
+            except Exception:
+                pass
+            failed.append(result)
         await asyncio.sleep(3)
     # Prepare webhook message
     if webhook_url:
