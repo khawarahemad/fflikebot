@@ -508,7 +508,7 @@ async def _autolike_worker(uid_list):
                 "title": "🤖 Auto-like Complete!",
                 "description": desc or "No results.",
                 "color": 0x3498DB,
-                "footer": {"text": "Auto-like finished at"},
+                "footer": {"text": "Auto-like finished"},
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
             requests.post(webhook_url, json={"embeds": [embed]}, timeout=10)
