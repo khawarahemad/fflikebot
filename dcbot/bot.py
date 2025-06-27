@@ -217,41 +217,41 @@ async def info_command(ctx, uid: str):
 @bot.command(name="checkban")
 async def checkban_command(ctx, uid: str):
     url = BAN_API.format(user_id=uid)
-    data = await fetch_json(url)
+    # Give more time for the ban check API to respond
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=30) as resp:
+                if resp.status != 200:
+                    return await ctx.send(f"❌ Error: API returned status code {resp.status}")
+                data = await resp.json()
+    except asyncio.TimeoutError:
+        return await ctx.send("❌ Error: Ban check API timed out. Please try again later.")
+    except Exception as e:
+        return await ctx.send(f"❌ Error: {str(e)}")
     
     if "error" in data:
         return await ctx.send(f"❌ Error: {data['error']}")
-    
     if data.get("status") != 200:
         return await ctx.send(f"❌ API Error: {data.get('msg', 'Unknown error')}")
-    
     player_data = data.get("data", {})
-    
     embed = discord.Embed(
         title="Ban Check Result",
         color=discord.Color.red() if player_data.get("is_banned") == 1 else discord.Color.green()
     )
-    
     embed.add_field(name="Player", value=player_data.get("nickname", "Unknown"), inline=True)
     embed.add_field(name="UID", value=player_data.get("id", "Unknown"), inline=True)
     embed.add_field(name="Region", value=player_data.get("region", "Unknown"), inline=True)
-    
     ban_status = "BANNED 🔴" if player_data.get("is_banned") == 1 else "CLEAN ✅"
     ban_details = f"{player_data.get('period')} days" if player_data.get("is_banned") == 1 else "N/A"
-    
     embed.add_field(name="Status", value=ban_status, inline=False)
     embed.add_field(name="Ban Duration", value=ban_details, inline=True)
-    
     # Set GIF image based on ban status
     if player_data.get("is_banned") == 1:
         gif_url = "https://raw.githubusercontent.com/khawarahemad/assets/main/banned.gif"
     else:
         gif_url = "https://raw.githubusercontent.com/khawarahemad/assets/main/clean.gif"
-    
     embed.set_image(url=gif_url)
-
     embed.set_footer(text=f"Credit: KHAN BHAI")
-    
     await ctx.send(embed=embed)
 
 # ========== PING COMMAND ==========
