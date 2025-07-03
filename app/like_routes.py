@@ -6,6 +6,7 @@ import aiohttp
 import requests 
 import time
 import os
+import random
 
 
 from .utils.protobuf_utils import encode_uid, decode_info, create_protobuf 
@@ -28,9 +29,9 @@ AUTO_LIKE_UIDS = [
     # ...
 ]
 
-async def async_post_request(url: str, data: bytes, token: str):
+async def async_post_request(url: str, data: bytes, token: str, device_profile: dict = None):
     try:
-        headers = get_headers(token)
+        headers = get_headers(token, device_profile)
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=data, headers=headers, timeout=10) as resp:
                 return await resp.read()
@@ -38,9 +39,9 @@ async def async_post_request(url: str, data: bytes, token: str):
         logger.error(f"Async request failed: {str(e)}")
         return None
 
-def make_request(uid_enc: str, url: str, token: str):
+def make_request(uid_enc: str, url: str, token: str, device_profile: dict = None):
     data = bytes.fromhex(uid_enc)
-    headers = get_headers(token)
+    headers = get_headers(token, device_profile)
     try:
         response = requests.post(url, headers=headers, data=data, timeout=10)
         if response.status_code == 200:
@@ -74,6 +75,19 @@ async def detect_player_region(uid: str):
 
     return None, None
 
+def generate_device_profile(batch_num):
+    # Generate a unique device profile for each batch
+    android_versions = ["9", "10", "11", "12"]
+    device_models = ["ASUS_Z01QD", "SM-G973F", "Redmi Note 8", "Pixel 4", "OnePlus 7T"]
+    build_ids = ["PI", "RQ3A.210805.001.A1", "QP1A.190711.020", "RKQ1.200710.002"]
+    user_agent = f"Dalvik/2.1.0 (Linux; U; Android {random.choice(android_versions)}; {random.choice(device_models)} Build/{random.choice(build_ids)})"
+    return {
+        'User-Agent': user_agent,
+        'X-Unity-Version': "2018.4.11f1",
+        'X-GA': f"v1 {batch_num}",
+        'ReleaseVersion': "OB49"
+    }
+
 async def send_likes(uid: str, region: str):
     tokens = _token_cache.get_tokens(region)
     like_url = f"{_SERVERS[region]}/LikeProfile"
@@ -84,10 +98,21 @@ async def send_likes(uid: str, region: str):
     total_success = 0
     results = []
     failed_tokens = []
-    for i in range(0, len(tokens), batch_size):
-        batch = tokens[i:i+batch_size]
-        tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token) for token in batch]
-        batch_results = await asyncio.gather(*tasks)
+
+    # Prepare all batches and their device profiles
+    batches = [tokens[i:i+batch_size] for i in range(0, len(tokens), batch_size)]
+    batch_device_profiles = [generate_device_profile(i) for i in range(len(batches))]
+
+    # Launch all batches in parallel
+    async def run_batch(batch, device_profile):
+        tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token, device_profile) for token in batch]
+        return await asyncio.gather(*tasks)
+
+    batch_results_list = await asyncio.gather(*[run_batch(batch, batch_device_profiles[i]) for i, batch in enumerate(batches)])
+
+    # Flatten results and process
+    for batch_idx, batch_results in enumerate(batch_results_list):
+        batch = batches[batch_idx]
         for idx, result in enumerate(batch_results):
             token = batch[idx]
             if result is not None:
@@ -98,14 +123,13 @@ async def send_likes(uid: str, region: str):
                 failed_tokens.append(token)
         total_sent += len(batch_results)
         results.extend(batch_results)
-        if i + batch_size < len(tokens):
-            await asyncio.sleep(3)
 
-    # Retry failed tokens once after a delay
+    # Retry failed tokens once after all batches
     if failed_tokens:
         logger.info(f"[LIKE] Retrying {len(failed_tokens)} failed tokens for UID {uid} after 2 seconds...")
         await asyncio.sleep(2)
-        retry_tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token) for token in failed_tokens]
+        retry_device_profile = generate_device_profile(9999)
+        retry_tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token, retry_device_profile) for token in failed_tokens]
         retry_results = await asyncio.gather(*retry_tasks)
         for idx, result in enumerate(retry_results):
             token = failed_tokens[idx]
