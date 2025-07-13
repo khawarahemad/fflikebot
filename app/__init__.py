@@ -19,6 +19,7 @@ SERVERS = {
     "EUROPE": os.getenv("EUROPE_SERVER", "https://clientbp.ggblueshark.com"),
     "IND": os.getenv("IND_SERVER", "https://client.ind.freefiremobile.com"),
     "BR": os.getenv("BR_SERVER", "https://client.us.freefiremobile.com"),
+    "BD": os.getenv("BD_SERVER", "https://client.bd.freefiremobile.com"),
 }
 
 
