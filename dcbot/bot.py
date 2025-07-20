@@ -39,7 +39,7 @@ class MyBot(commands.Bot):
 
 bot = MyBot(command_prefix="!", intents=intents)
 
-API_BASE = "http://127.0.0.1:5003"  # Change to your deployed API if needed
+API_BASE = "https://fflikebot-production.up.railway.app"  
 INFO_API = "https://api-info-gb.up.railway.app/info?uid={user_id}"
 BAN_API = "https://api-check-ban.vercel.app/check_ban/{user_id}"
 
