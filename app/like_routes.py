@@ -2,14 +2,16 @@ from flask import Blueprint, request, jsonify, current_app
 import asyncio
 from datetime import datetime, timezone
 import logging
-import aiohttp 
-import requests 
+import aiohttp
+import requests
 import time
 import os
 import random
+from aiohttp_socks import ProxyConnector
+import socks
 
 
-from .utils.protobuf_utils import encode_uid, decode_info, create_protobuf 
+from .utils.protobuf_utils import encode_uid, decode_info, create_protobuf
 from .utils.crypto_utils import encrypt_aes
 from .utils.http_utils import get_headers
 
@@ -28,28 +30,57 @@ AUTO_LIKE_UIDS = [
     "1654843293",
     # ...
 ]
-
-async def async_post_request(url: str, data: bytes, token: str, device_profile: dict = None):
+#Proxy list
+PROXIES = [
+    "socks4://181.48.217.158:5678",
+    "socks4://77.24.20.215:55915",
+    "socks4://116.197.129.170:4145",
+    "socks4://103.158.252.102:5678",
+    "socks4://92.207.253.226:4145",
+    "socks4://108.175.23.225:13135",
+    "socks4://5.23.104.251:1080",
+    "socks4://45.236.215.111:54029",
+    "socks4://183.88.219.206:34676",
+    "socks4://150.107.207.137:57230",
+    "socks4://103.81.194.160:8888",
+    "socks4://27.72.73.143:4153",
+    "socks4://109.232.106.150:52435",
+    "socks4://119.15.89.87:5678",
+    "socks4://193.200.151.69:32777",
+    "socks4://102.64.117.254:4145",
+    "socks4://171.250.222.247:1080",
+    "socks4://212.220.13.98:4153",
+]
+#
+async def async_post_request(url: str, data: bytes, token: str, device_profile: dict = None, proxy: str = None):
     try:
         headers = get_headers(token, device_profile)
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=data, headers=headers, timeout=10) as resp:
-                return await resp.read()
+        if proxy:
+            connector = ProxyConnector.from_url(proxy)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.post(url, data=data, headers=headers, timeout=10) as resp:
+                    return await resp.read()
+        else:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, data=data, headers=headers, timeout=10) as resp:
+                    return await resp.read()
     except Exception as e:
-        logger.error(f"Async request failed: {str(e)}")
+        logger.error(f"Async request failed: {str(e)} (proxy={proxy})")
         return None
 
-def make_request(uid_enc: str, url: str, token: str, device_profile: dict = None):
+
+def make_request(uid_enc: str, url: str, token: str, device_profile: dict = None, proxy: str = None):
     data = bytes.fromhex(uid_enc)
     headers = get_headers(token, device_profile)
     try:
-        response = requests.post(url, headers=headers, data=data, timeout=10)
+        proxies = {"http": proxy, "https": proxy} if proxy else None
+        response = requests.post(url, headers=headers, data=data, timeout=10, proxies=proxies)
         if response.status_code == 200:
             return decode_info(response.content)
-        logger.warning(f"Request failed with status {response.status_code}")
+        logger.warning(f"Request failed with status {response.status_code} (proxy={proxy})")
         return None
     except Exception as e:
-        logger.error(f"Request error: {str(e)}")
+        logger.error(f"Request error: {str(e)} (proxy={proxy})")
         return None
 
 async def detect_player_region(uid: str):
@@ -105,7 +136,10 @@ async def send_likes(uid: str, region: str):
 
     # Launch all batches in parallel
     async def run_batch(batch, device_profile):
-        tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token, device_profile) for token in batch]
+        tasks = []
+        for token in batch:
+            proxy = random.choice(PROXIES) if PROXIES else None
+            tasks.append(async_post_request(like_url, bytes.fromhex(encrypted), token, device_profile, proxy=proxy))
         return await asyncio.gather(*tasks)
 
     batch_results_list = await asyncio.gather(*[run_batch(batch, batch_device_profiles[i]) for i, batch in enumerate(batches)])
@@ -129,7 +163,10 @@ async def send_likes(uid: str, region: str):
         logger.info(f"[LIKE] Retrying {len(failed_tokens)} failed tokens for UID {uid} after 2 seconds...")
         await asyncio.sleep(2)
         retry_device_profile = generate_device_profile(9999)
-        retry_tasks = [async_post_request(like_url, bytes.fromhex(encrypted), token, retry_device_profile) for token in failed_tokens]
+        retry_tasks = []
+        for token in failed_tokens:
+            proxy = random.choice(PROXIES) if PROXIES else None
+            retry_tasks.append(async_post_request(like_url, bytes.fromhex(encrypted), token, retry_device_profile, proxy=proxy))
         retry_results = await asyncio.gather(*retry_tasks)
         for idx, result in enumerate(retry_results):
             token = failed_tokens[idx]

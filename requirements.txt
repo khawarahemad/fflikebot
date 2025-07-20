@@ -7,3 +7,5 @@ python-dotenv
 protobuf
 gunicorn
 discord.py
+aiohttp_socks
+requests[socks]
